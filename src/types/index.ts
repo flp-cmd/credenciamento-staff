@@ -77,8 +77,7 @@ export interface LoginDTO {
 export interface CreateEventDTO {
   name: string;
   location?: string;
-  start_date?: string;
-  end_date?: string;
+  event_date?: string;
 }
 
 export interface CreateTeamDTO {

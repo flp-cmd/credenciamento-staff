@@ -24,19 +24,75 @@ const createStaffSchema = z.object({
 });
 
 /**
- * GET /api/staff?team_id=1&position_id=2 - Listar staff de um time/posição
- * Admin pode ver por team_id e position_id
+ * GET /api/staff?team_id=1&event_id=1&position_id=2 - Listar staff de um time/evento/posição
+ * Admin pode ver por team_id, event_id e position_id
  * Team leader via team_code pode ver todos do time
  */
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const teamId = searchParams.get("team_id");
+    const eventId = searchParams.get("event_id");
     const positionId = searchParams.get("position_id");
 
     // Tentar autenticação admin primeiro
     const adminAuth = await authenticate(request);
     if (adminAuth.success) {
+      if (!teamId && !eventId) {
+        return errorResponse("team_id ou event_id é obrigatório", 400);
+      }
+
+      if (eventId) {
+        // Buscar staff por evento
+        const eventCheck = await query(
+          `SELECT id FROM events WHERE id = $1 AND admin_id = $2`,
+          [eventId, adminAuth.admin.adminId]
+        );
+
+        if (eventCheck.rows.length === 0) {
+          return errorResponse("Evento não encontrado", 404);
+        }
+
+        let queryText = `SELECT 
+          s.id, 
+          s.team_id, 
+          s.position_id,
+          s.name,
+          s.cpf,
+          s.email,
+          s.phone,
+          s.address,
+          s.car_plate,
+          s.created_at 
+         FROM staff s
+         INNER JOIN teams t ON s.team_id = t.id
+         WHERE t.event_id = $1`;
+
+        const params: unknown[] = [eventId];
+        let paramCount = 2;
+
+        if (teamId) {
+          queryText += ` AND s.team_id = $${paramCount}`;
+          params.push(teamId);
+          paramCount++;
+        }
+
+        if (positionId) {
+          queryText += ` AND s.position_id = $${paramCount}`;
+          params.push(positionId);
+        }
+
+        queryText += ` ORDER BY s.created_at DESC`;
+
+        const result = await query(queryText, params);
+
+        return successResponse({
+          staff: result.rows,
+          total: result.rows.length,
+        });
+      }
+
+      // Buscar staff por team_id (mantém compatibilidade)
       if (!teamId) {
         return errorResponse("team_id é obrigatório", 400);
       }
